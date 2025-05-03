@@ -54,7 +54,7 @@ export const qemuService = {
   // Create VM
   createVM: async (data: any) => {
     try {
-      const response = await apiClient.post('/qemu/vms', data);
+      const response = await apiClient.post('/create-vm', data);
       toast.success('VM created successfully');
       return response;
     } catch (err) {
