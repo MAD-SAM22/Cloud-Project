@@ -14,6 +14,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import ContainersPage from "@/pages/ContainersPage";
 import ImagesPage from "@/pages/ImagesPage";
 import VMsPage from "@/pages/VMsPage";
+import VirtualDiskPage from "@/pages/VirtualDiskPage";
 import LogsPage from "@/pages/LogsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import ProfilePage from "@/pages/ProfilePage";
@@ -78,6 +79,14 @@ const App = () => (
                   <ProtectedRoute>
                     <AppLayout>
                       <VMsPage />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/virtual-disks" element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <VirtualDiskPage />
                     </AppLayout>
                   </ProtectedRoute>
                 } />
