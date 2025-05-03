@@ -1,10 +1,9 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { HardDrive, Plus } from "lucide-react";
+import { HardDrive, Plus, Trash2, PencilLine, RefreshCcw } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,66 +32,114 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { virtualDiskService, DiskInfo, CreateDiskParams } from "@/services/virtualDiskService";
 
 // Define the schema for creating a virtual disk
 const formSchema = z.object({
   name: z.string().min(1, "Disk name is required"),
   size: z.string().min(1, "Size is required"),
   format: z.string().min(1, "Format is required"),
-  path: z.string().optional(),
+  type: z.enum(["dynamic", "fixed"]).optional(),
 });
 
-// Mock disk data (would come from an API in a real implementation)
-const mockDisks = [
-  { id: "disk1", name: "ubuntu-disk", size: "20GB", format: "qcow2", path: "/var/lib/qemu/disks/ubuntu-disk.qcow2", created: "2025-04-30" },
-  { id: "disk2", name: "windows-disk", size: "50GB", format: "raw", path: "/var/lib/qemu/disks/windows-disk.raw", created: "2025-05-01" },
-];
+// Define form values type based on the schema
+type FormValues = z.infer<typeof formSchema>;
 
 const VirtualDiskPage = () => {
-  const [disks, setDisks] = useState(mockDisks);
+  const [disks, setDisks] = useState<DiskInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showTypeField, setShowTypeField] = useState(true);
   
   // Initialize form
-  const form = useForm({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       size: "20",
       format: "qcow2",
-      path: "/var/lib/qemu/disks/",
+      type: "dynamic",
     },
   });
 
+  const fetchDisks = async () => {
+    setIsLoading(true);
+    try {
+      const diskList = await virtualDiskService.listDisks();
+      setDisks(diskList);
+    } catch (error) {
+      console.error("Failed to fetch disks:", error);
+      toast.error("Failed to fetch disk list");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDisks();
+  }, []);
+
+  // Handle format change to show/hide type field
+  const handleFormatChange = (format: string) => {
+    if (format === 'raw') {
+      form.setValue('type', 'fixed');
+      setShowTypeField(false);
+    } else if (format === 'vdi' || format === 'vpc') {
+      form.setValue('type', 'dynamic');
+      setShowTypeField(false);
+    } else {
+      setShowTypeField(true);
+    }
+  };
+
   // Handle form submission
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: FormValues) => {
     setIsCreating(true);
-    
-    // In a real implementation, this would be an API call
-    setTimeout(() => {
-      // Create a new disk object
-      const newDisk = {
-        id: `disk${Date.now()}`,
+    try {
+      // Ensure values match CreateDiskParams type
+      const diskParams: CreateDiskParams = {
         name: values.name,
-        size: `${values.size}GB`,
+        size: values.size,
         format: values.format,
-        path: `${values.path || "/var/lib/qemu/disks/"}${values.name}.${values.format}`,
-        created: new Date().toISOString().split('T')[0],
+        type: values.type as 'dynamic' | 'fixed'
       };
       
-      // Add the new disk to the list
-      setDisks([...disks, newDisk]);
-      
+      await virtualDiskService.createDisk(diskParams);
       // Reset the form
       form.reset({
         name: "",
         size: "20",
         format: "qcow2",
-        path: "/var/lib/qemu/disks/",
+        type: "dynamic",
       });
-      
-      toast.success(`Virtual disk ${values.name} created successfully`);
+      // Refresh disk list
+      fetchDisks();
+    } catch (error) {
+      // Error is handled in the service
+      console.error("Error during disk creation:", error);
+    } finally {
       setIsCreating(false);
-    }, 1000);
+    }
+  };
+
+  // Handle disk deletion
+  const handleDeleteDisk = async (diskName: string, format: string) => {
+    try {
+      await virtualDiskService.deleteDisk(`${diskName}.${format}`);
+      fetchDisks();
+    } catch (error) {
+      // Error is handled in the service
+      console.error("Error deleting disk:", error);
+    }
   };
 
   return (
@@ -104,6 +151,10 @@ const VirtualDiskPage = () => {
             Create and manage virtual disk images for your QEMU virtual machines
           </p>
         </div>
+        <Button variant="outline" onClick={fetchDisks} disabled={isLoading}>
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </div>
       
       <div className="grid gap-6 md:grid-cols-2">
@@ -159,7 +210,10 @@ const VirtualDiskPage = () => {
                     <FormItem>
                       <FormLabel>Disk Format</FormLabel>
                       <Select 
-                        onValueChange={field.onChange} 
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          handleFormatChange(value);
+                        }} 
                         defaultValue={field.value}
                       >
                         <FormControl>
@@ -172,7 +226,7 @@ const VirtualDiskPage = () => {
                           <SelectItem value="raw">raw (Raw Disk Image)</SelectItem>
                           <SelectItem value="vdi">vdi (VirtualBox Disk Image)</SelectItem>
                           <SelectItem value="vmdk">vmdk (VMware Disk)</SelectItem>
-                          <SelectItem value="vhd">vhd (Virtual Hard Disk)</SelectItem>
+                          <SelectItem value="vpc">vpc (Virtual Hard Disk)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
@@ -183,22 +237,35 @@ const VirtualDiskPage = () => {
                   )}
                 />
                 
-                <FormField
-                  control={form.control}
-                  name="path"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Storage Path (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="/var/lib/qemu/disks/" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        Directory where the disk will be stored
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {showTypeField && (
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Allocation Type</FormLabel>
+                        <Select 
+                          onValueChange={field.onChange} 
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="dynamic">Dynamic (thin provisioning)</SelectItem>
+                            <SelectItem value="fixed">Fixed (pre-allocated)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Dynamic allocation saves space, fixed allocation improves performance
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 
                 <CardFooter className="px-0 pt-4">
                   <Button type="submit" className="w-full" disabled={isCreating}>
@@ -230,28 +297,63 @@ const VirtualDiskPage = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Size</TableHead>
+                  <TableHead>Size (GB)</TableHead>
                   <TableHead>Format</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {disks.length === 0 ? (
+                {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
+                    <TableCell colSpan={5} className="text-center py-4">
+                      Loading disks...
+                    </TableCell>
+                  </TableRow>
+                ) : disks.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-4">
                       No virtual disks found
                     </TableCell>
                   </TableRow>
                 ) : (
                   disks.map((disk) => (
-                    <TableRow key={disk.id}>
+                    <TableRow key={`${disk.name}-${disk.format}`}>
                       <TableCell className="font-medium flex items-center">
                         <HardDrive className="h-4 w-4 mr-2 text-muted-foreground" />
                         {disk.name}
                       </TableCell>
                       <TableCell>{disk.size}</TableCell>
                       <TableCell>{disk.format}</TableCell>
-                      <TableCell>{disk.created}</TableCell>
+                      <TableCell>{disk.type}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end space-x-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="icon">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Confirm Deletion</DialogTitle>
+                                <DialogDescription>
+                                  Are you sure you want to delete the disk "{disk.name}.{disk.format}"?
+                                  This action cannot be undone.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                <Button 
+                                  variant="destructive" 
+                                  onClick={() => handleDeleteDisk(disk.name, disk.format)}
+                                >
+                                  Delete
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

@@ -1,4 +1,5 @@
-# Cloud-Project
+
+# Virtual Dock Control Hub
 
 A modern, responsive web application for managing Docker containers and QEMU virtual machines through a unified interface.
 
@@ -44,23 +45,12 @@ You can use a `.env` file in the project root or set the environment variable di
 
 ## Getting Started
 
-## Backend run 
-
-/**
- * Quick start -> go to Backend folder 
- *   npm i express morgan dockerode
- *   set DOCKER_HOST=npipe:////./pipe/docker_engine
- *   node docker_api_gateway.js
- **/
-
-## Frontend run 
-
 ### Development Setup
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/MAD-SAM22/CLOUD-PROJECT
-   cd CLOUD-PROJECT
+   git clone https://github.com/MAD-SAM22/virtual-dock-control-hub.git
+   cd virtual-dock-control-hub
    ```
 
 2. Install dependencies:
